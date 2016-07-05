@@ -1,17 +1,20 @@
 /// <reference path="node-4.d.ts" />
 
 import * as http from "http";
+import * as https from "https";
 import * as url from "url";
 import * as fs from "fs";
 import * as child_process from "child_process";
 
 const PORT: number = 8080;
+const HOST: string = "localhost";
+const SOCKET_ADDRESS = HOST + ":" + PORT.toString();
 
 var files_to_serve =
-    {
-        reference: "",
-        reads: <Array<string>>([ ])
-    };
+{
+    reference: "",
+    reads: <Array<string>>([ ])
+};
 
 process.argv.forEach(function (val: string, index: number, array: Array<string>)
 {
@@ -162,75 +165,137 @@ function handle_request(request: http.ServerRequest, response: http.ServerRespon
 
 class Machine
 {
-    name: string;
-    host: string;
-    cert_path: string;
+    private _name: string;
+    private _host: string;
+    private _cert_path: string;
+    private _cores: number;
+
+    get_name(): string { return this._name; }
+    get_host(): string { return this._host; }
+    get_cert_path(): string { return this._cert_path; }
+    get_num_cores(): number { return this._cores; }
 
     constructor(name, host, cert_path)
     {
-        this.name = name;
-        this.host = host;
-        this.cert_path = cert_path;
+        this._name = name;
+        this._host = host;
+        this._cert_path = cert_path;
+        this._cores = 48;
     }
-}
 
-function create_machine(cb: (exit_status: number, mach: Machine)=>void): void
-{
-    var machine_name: string = "cloud-aln-" + random_string(16);
-    var create_machine_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["create", "--driver", "virtualbox", machine_name]);
-
-    create_machine_proc.stdout.on("data", function(data: Buffer)
+    run_container(image: string, cmd: Array<string>, cb: (exit_status: number)=>void): void
     {
-        process.stdout.write(data.toString("utf8"));
-    });
-
-    create_machine_proc.stderr.on("data", function(data: Buffer)
-    {
-        process.stderr.write(data);
-    });
-
-    create_machine_proc.on("close", function(exit_code: number)
-    {
-        if (exit_code)
+        var sock_addr_arr = this._host.split(":");
+        var options =
         {
-            cb(exit_code, null);
-        }
-        else
+            hostname: sock_addr_arr[0],
+            port: parseInt(sock_addr_arr[1]),
+            path: '/containers/create',
+            method: 'POST',
+            headers:
+            {
+                "Content-Type": "application/json"
+            },
+            key: fs.readFileSync(this._cert_path + "/key.pem"), // TODO: make these async
+            cert: fs.readFileSync(this._cert_path + "/cert.pem"),
+            agent: false
+        };
+
+        var req_entity =
         {
-            var env_data: string = "";
-            var get_machine_env_proc = child_process.spawn("docker-machine", ["env", machine_name]);
-            get_machine_env_proc.stdout.on("data", function(data: Buffer)
-            {
-                env_data += data.toString("utf8");
-            });
+            Image: image,
+            Cmd: cmd
+        };
 
-            get_machine_env_proc.on("close", function(exit_code: number)
-            {
-                if (exit_code)
-                {
-                    // TODO: Destroy machine.
-                    cb(exit_code, null);
-                }
-                else
-                {
-                    var host_res = new RegExp("export DOCKER_HOST=\"tcp\:([^\"]+)\"").exec(env_data);
-                    var cert_path_res = new RegExp("export DOCKER_CERT_PATH=\"([^\"]+)\"").exec(env_data);
+        var req: http.ClientRequest = https.request(options, function (res: http.ClientResponse)
+        {
+            // TODO: Finish.
+        });
 
-                    if (!host_res || host_res.length != 2 || !cert_path_res || cert_path_res.length != 2)
+        req.end(JSON.stringify(req_entity));
+
+    }
+
+    private static delete_machine_by_name(name: string, cb: (exit_status: number)=>void): void
+    {
+        var rm_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["rm", "-y", name]);
+
+        rm_proc.stdout.on("data", function(data: Buffer)
+        {
+            process.stdout.write(data);
+        });
+
+        rm_proc.stderr.on("data", function(data: Buffer)
+        {
+            process.stderr.write(data);
+        });
+
+        rm_proc.on("close", cb);
+    }
+
+    static delete_machine(mach: Machine, cb: (exit_status: number)=>void): void
+    {
+        Machine.delete_machine_by_name(mach.get_name(), cb);
+    }
+
+    static create_machine(cb: (exit_status: number, mach: Machine)=>void): void
+    {
+        var machine_name: string = "cloud-aln-" + random_string(16);
+        var create_machine_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["create", "--driver", "virtualbox", machine_name]); // TODO: specify cores/mem
+
+        create_machine_proc.stdout.on("data", function(data: Buffer)
+        {
+            process.stdout.write(data);
+        });
+
+        create_machine_proc.stderr.on("data", function(data: Buffer)
+        {
+            process.stderr.write(data);
+        });
+
+        create_machine_proc.on("close", function(exit_code: number)
+        {
+            if (exit_code)
+            {
+                cb(exit_code, null);
+            }
+            else
+            {
+                var env_data: string = "";
+                var get_machine_env_proc = child_process.spawn("docker-machine", ["env", machine_name]);
+                get_machine_env_proc.stdout.on("data", function(data: Buffer)
+                {
+                    env_data += data.toString("utf8");
+                });
+
+                get_machine_env_proc.on("close", function(exit_code: number)
+                {
+                    if (exit_code)
                     {
-                        console.error("Could not parse docker machine environment");
-                        // TODO: Destroy machine.
-                        cb(-1, null);
-
+                        Machine.delete_machine_by_name(machine_name, function(exit_status: number) {});
+                        cb(exit_code, null);
                     }
                     else
                     {
-                        cb(0, new Machine(machine_name, host_res[1], cert_path_res[1]));
+                        var host_res = new RegExp("export DOCKER_HOST=\"tcp\:\/\/([^\"]+)\"").exec(env_data);
+                        var cert_path_res = new RegExp("export DOCKER_CERT_PATH=\"([^\"]+)\"").exec(env_data);
+
+                        if (!host_res || host_res.length != 2 || !cert_path_res || cert_path_res.length != 2)
+                        {
+                            console.error("Could not parse docker machine environment");
+                            Machine.delete_machine_by_name(machine_name, function(exit_status: number) {});
+                            cb(-1, null);
+
+                        }
+                        else
+                        {
+                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1]));
+                        }
                     }
-                }
-            });
-        }
-    });
+                });
+            }
+        });
+    }
 }
 
 
@@ -240,7 +305,7 @@ server.listen(PORT, function(): void
     console.log("Server listening on: http://localhost:%s", PORT);
 });
 
-create_machine(function(exit_code: number, machine: Machine): void
+Machine.create_machine(function(exit_code: number, machine: Machine): void
 {
     if (exit_code)
     {
@@ -248,7 +313,29 @@ create_machine(function(exit_code: number, machine: Machine): void
     }
     else
     {
-        console.log(machine);
+        var commands: Array<string> =
+            [
+                "curl http://" + SOCKET_ADDRESS + "/ref.amb > ./ref.amb",
+                "curl http://" + SOCKET_ADDRESS + "/ref.ann > ./ref.ann",
+                "curl http://" + SOCKET_ADDRESS + "/ref.bwt > ./ref.bwt",
+                "curl http://" + SOCKET_ADDRESS + "/ref.pac > ./ref.pac",
+                "curl http://" + SOCKET_ADDRESS + "/ref.sa > ./ref.sa"
+            ];
+
+        for (var i = 0; i < files_to_serve.reads.length; ++i)
+        {
+            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | curl -X PUT --data-binary @- http://" + SOCKET_ADDRESS + "/" + i.toString());
+        }
+
+        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join("; ")], function(exit_status: number)
+        {
+
+
+            Machine.delete_machine(machine, function(exit_status: number)
+            {
+                console.log(exit_status);
+            });
+        });
     }
 });
 
