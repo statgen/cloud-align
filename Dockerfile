@@ -11,3 +11,4 @@ RUN unzip /root/bwa.zip -d /root
 RUN rm /root/bwa.zip
 RUN make -C /root/bwa-0.7.15
 RUN ln -s /root/bwa-0.7.15/bwa /usr/bin/bwa
+
