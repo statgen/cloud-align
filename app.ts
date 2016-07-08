@@ -4,11 +4,11 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import * as fs from "fs";
-import * as child_process from "child_process";
+import * as util from "./util";
+import {Machine} from "./machine"
 
-const PORT: number = 8080;
-const HOST: string = "localhost";
-const SOCKET_ADDRESS = HOST + ":" + PORT.toString();
+var PORT: number = 8080;
+var HOST: string = "";
 
 var files_to_serve =
 {
@@ -18,24 +18,24 @@ var files_to_serve =
 
 process.argv.forEach(function (val: string, index: number, array: Array<string>)
 {
-    if (index == 2)
+    if (index === 2)
+    {
+        var sock_addr_arr = val.split(":");
+        HOST = sock_addr_arr[0];
+        if (sock_addr_arr.length > 1)
+            PORT = parseInt(sock_addr_arr[1]);
+    }
+    else if (index === 3)
     {
         files_to_serve.reference = val;
     }
-    else if (index > 2)
+    else if (index > 3)
     {
         files_to_serve.reads.push(val);
     }
 });
 
-function random_string(length: number) : string
-{
-    var chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    var result = "";
-    for (var i = length; i > 0; --i)
-        result += chars[Math.floor(Math.random() * chars.length)];
-    return result;
-}
+const SOCKET_ADDRESS = HOST + ":" + PORT.toString();
 
 function handle_get(request: http.ServerRequest, response: http.ServerResponse): void
 {
@@ -117,13 +117,15 @@ function handle_put(request: http.ServerRequest, response: http.ServerResponse):
         }
         else
         {
-            var bam_file_path = files_to_serve.reads[read_index] + ".bam";
-            var tmp_bam_file_path = bam_file_path + random_string(16);
+            var bam_file_path = files_to_serve.reads[read_index].replace(/\.fastq\.gz$/, ".sam.gz");
+            var tmp_bam_file_path = bam_file_path + util.random_string(16);
 
             var file_stream = fs.createWriteStream(tmp_bam_file_path);
             request.pipe(file_stream);
-            request.on("error", function()
+            request.on("error", function(e: Error)
             {
+                console.log("PUT Error:");
+                console.log(e);
                 response.writeHead(500);
                 response.end();
             });
@@ -163,141 +165,6 @@ function handle_request(request: http.ServerRequest, response: http.ServerRespon
     }
 }
 
-class Machine
-{
-    private _name: string;
-    private _host: string;
-    private _cert_path: string;
-    private _cores: number;
-
-    get_name(): string { return this._name; }
-    get_host(): string { return this._host; }
-    get_cert_path(): string { return this._cert_path; }
-    get_num_cores(): number { return this._cores; }
-
-    constructor(name, host, cert_path)
-    {
-        this._name = name;
-        this._host = host;
-        this._cert_path = cert_path;
-        this._cores = 48;
-    }
-
-    run_container(image: string, cmd: Array<string>, cb: (exit_status: number)=>void): void
-    {
-        var sock_addr_arr = this._host.split(":");
-        var options =
-        {
-            hostname: sock_addr_arr[0],
-            port: parseInt(sock_addr_arr[1]),
-            path: '/containers/create',
-            method: 'POST',
-            headers:
-            {
-                "Content-Type": "application/json"
-            },
-            key: fs.readFileSync(this._cert_path + "/key.pem"), // TODO: make these async
-            cert: fs.readFileSync(this._cert_path + "/cert.pem"),
-            agent: false
-        };
-
-        var req_entity =
-        {
-            Image: image,
-            Cmd: cmd
-        };
-
-        var req: http.ClientRequest = https.request(options, function (res: http.ClientResponse)
-        {
-            // TODO: Finish.
-        });
-
-        req.end(JSON.stringify(req_entity));
-
-    }
-
-    private static delete_machine_by_name(name: string, cb: (exit_status: number)=>void): void
-    {
-        var rm_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["rm", "-y", name]);
-
-        rm_proc.stdout.on("data", function(data: Buffer)
-        {
-            process.stdout.write(data);
-        });
-
-        rm_proc.stderr.on("data", function(data: Buffer)
-        {
-            process.stderr.write(data);
-        });
-
-        rm_proc.on("close", cb);
-    }
-
-    static delete_machine(mach: Machine, cb: (exit_status: number)=>void): void
-    {
-        Machine.delete_machine_by_name(mach.get_name(), cb);
-    }
-
-    static create_machine(cb: (exit_status: number, mach: Machine)=>void): void
-    {
-        var machine_name: string = "cloud-aln-" + random_string(16);
-        var create_machine_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["create", "--driver", "virtualbox", machine_name]); // TODO: specify cores/mem
-
-        create_machine_proc.stdout.on("data", function(data: Buffer)
-        {
-            process.stdout.write(data);
-        });
-
-        create_machine_proc.stderr.on("data", function(data: Buffer)
-        {
-            process.stderr.write(data);
-        });
-
-        create_machine_proc.on("close", function(exit_code: number)
-        {
-            if (exit_code)
-            {
-                cb(exit_code, null);
-            }
-            else
-            {
-                var env_data: string = "";
-                var get_machine_env_proc = child_process.spawn("docker-machine", ["env", machine_name]);
-                get_machine_env_proc.stdout.on("data", function(data: Buffer)
-                {
-                    env_data += data.toString("utf8");
-                });
-
-                get_machine_env_proc.on("close", function(exit_code: number)
-                {
-                    if (exit_code)
-                    {
-                        Machine.delete_machine_by_name(machine_name, function(exit_status: number) {});
-                        cb(exit_code, null);
-                    }
-                    else
-                    {
-                        var host_res = new RegExp("export DOCKER_HOST=\"tcp\:\/\/([^\"]+)\"").exec(env_data);
-                        var cert_path_res = new RegExp("export DOCKER_CERT_PATH=\"([^\"]+)\"").exec(env_data);
-
-                        if (!host_res || host_res.length != 2 || !cert_path_res || cert_path_res.length != 2)
-                        {
-                            console.error("Could not parse docker machine environment");
-                            Machine.delete_machine_by_name(machine_name, function(exit_status: number) {});
-                            cb(-1, null);
-
-                        }
-                        else
-                        {
-                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1]));
-                        }
-                    }
-                });
-            }
-        });
-    }
-}
-
 
 var server = http.createServer(handle_request);
 server.listen(PORT, function(): void
@@ -324,16 +191,17 @@ Machine.create_machine(function(exit_code: number, machine: Machine): void
 
         for (var i = 0; i < files_to_serve.reads.length; ++i)
         {
-            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | curl -X PUT --data-binary @- http://" + SOCKET_ADDRESS + "/" + i.toString());
+            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString() + "; rm -f ./aln.sam.gz");
         }
 
-        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join("; ")], function(exit_status: number)
+        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join("; ")], function(run_exit_status: number)
         {
+            console.log("Run container exit status: " + run_exit_status);
 
-
-            Machine.delete_machine(machine, function(exit_status: number)
+            Machine.destroy_machine(machine, function (destroy_exit_status:number)
             {
-                console.log(exit_status);
+                console.log("Destroy machine exit status: " + destroy_exit_status);
+                process.exit(run_exit_status || destroy_exit_status);
             });
         });
     }
