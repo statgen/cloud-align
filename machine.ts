@@ -231,11 +231,11 @@ export class Machine
 
     static create_machine(gce_project_id: string, cb: (exit_status: number, mach: Machine)=>void): void
     {
-        var machine_name: string = "cloud-aln-" + util.random_string(16);
+        var machine_name: string = "cloud-aln-" + util.random_string(16).toLowerCase();
 
         var create_args: Array<string> = [];
         if (gce_project_id)
-            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-machine-type", "n1-highcpu-32", machine_name];
+            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-zone", "us-central1-b", "--google-machine-type", "n1-highcpu-16", "--google-preemptible", machine_name];
         else
             create_args = ["create", "--driver", "virtualbox", machine_name];
 
@@ -255,6 +255,7 @@ export class Machine
         {
             if (exit_code)
             {
+                Machine.destroy_machine_by_name(machine_name, function(exit_status: number) {});
                 cb(exit_code, null);
             }
             else
@@ -287,7 +288,7 @@ export class Machine
                         }
                         else
                         {
-                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1], gce_project_id.length ? 32 : 2));
+                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1], gce_project_id.length ? 16 : 2));
                         }
                     }
                 });
