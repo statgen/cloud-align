@@ -17,12 +17,12 @@ export class Machine
     get_cert_path(): string { return this._cert_path; }
     get_num_cores(): number { return this._cores; }
 
-    constructor(name, host, cert_path)
+    constructor(name: string, host: string, cert_path: string, cores: number)
     {
         this._name = name;
         this._host = host;
         this._cert_path = cert_path;
-        this._cores = 4;
+        this._cores = cores;
     }
 
     run_container(image: string, cmd: Array<string>, cb: (exit_status: number)=>void): void
@@ -142,6 +142,7 @@ export class Machine
 
                                                 res.on("error", function(e: Error)
                                                 {
+                                                    console.error("Wait response error");
                                                     console.error(e);
                                                     cb(-1);
                                                 });
@@ -178,6 +179,16 @@ export class Machine
                                                     }
                                                 });
                                             });
+
+                                            req.setSocketKeepAlive(true, 1000);
+
+                                            req.on("error", function(e: Error)
+                                            {
+                                                console.error("Wait request error");
+                                                console.log(e);
+                                                cb(-1);
+                                            });
+
                                             req.end();
                                         }
                                     });
@@ -218,10 +229,17 @@ export class Machine
         Machine.destroy_machine_by_name(mach.get_name(), cb);
     }
 
-    static create_machine(cb: (exit_status: number, mach: Machine)=>void): void
+    static create_machine(gce_project_id: string, cb: (exit_status: number, mach: Machine)=>void): void
     {
         var machine_name: string = "cloud-aln-" + util.random_string(16);
-        var create_machine_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["create", "--driver", "virtualbox", machine_name]); // TODO: specify cores/mem
+
+        var create_args: Array<string> = [];
+        if (gce_project_id)
+            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-machine-type", "n1-highcpu-32", machine_name];
+        else
+            create_args = ["create", "--driver", "virtualbox", machine_name];
+
+        var create_machine_proc: child_process.ChildProcess = child_process.spawn("docker-machine", create_args);
 
         create_machine_proc.stdout.on("data", function(data: Buffer)
         {
@@ -269,7 +287,7 @@ export class Machine
                         }
                         else
                         {
-                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1]));
+                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1], gce_project_id.length ? 32 : 2));
                         }
                     }
                 });

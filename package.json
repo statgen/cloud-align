@@ -1,0 +1,15 @@
+{
+  "name": "cloud-align",
+  "version": "1.0.0-alpha",
+  "description": "A script for aligning fastq files on the cloud.",
+  "scripts":
+  {
+    "build": "tsc app.ts machine.ts util.ts",
+    "start": "node app.js"
+  },
+  "main": "app.js",
+  "dependencies":
+  {
+    "node-getopt": "0.2.3"
+  }
+}

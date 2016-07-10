@@ -1,14 +1,21 @@
 /// <reference path="node-4.d.ts" />
+/// <reference path="node-getopt.d.ts" />
 
+// Node
 import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import * as fs from "fs";
+
+// 3rd Party
+import Getopt = require("node-getopt");
+
+// Local
 import * as util from "./util";
 import {Machine} from "./machine"
+import ParsedOption = require("node-getopt");
 
-var PORT: number = 8080;
-var HOST: string = "";
+var driver = ""
 
 var files_to_serve =
 {
@@ -16,26 +23,38 @@ var files_to_serve =
     reads: <Array<string>>([ ])
 };
 
-process.argv.forEach(function (val: string, index: number, array: Array<string>)
+
+var opt =  Getopt.create(
+    [
+        ["g", "gce-proj=GOOGLE_PROJECT_ID" , "Google cloud project."],
+        ["h", "sock-addr=SOCKET_ADDRESS"   , "Socket address (host:port)."]
+    ])
+    .parse(process.argv); // parse command line);
+
+const SOCKET_ADDRESS = opt.options["sock-addr"] || "localhost:8080";
+var sock_addr_arr = SOCKET_ADDRESS.split(":");
+const HOST: string = sock_addr_arr[0];
+const PORT = (sock_addr_arr.length > 1 ? parseInt(sock_addr_arr[1]) : 8080);
+const GCE_PROJECT_ID: string =  opt.options["gce-proj"] || "";
+
+if (opt.argv.length < 4)
+{
+    console.error("Usage: node app.js [options ...] <ref_path> <fastq_paths ...>");
+    process.exit(-1);
+}
+
+opt.argv.forEach(function (val: string, index: number, array: Array<string>)
 {
     if (index === 2)
     {
-        var sock_addr_arr = val.split(":");
-        HOST = sock_addr_arr[0];
-        if (sock_addr_arr.length > 1)
-            PORT = parseInt(sock_addr_arr[1]);
-    }
-    else if (index === 3)
-    {
         files_to_serve.reference = val;
     }
-    else if (index > 3)
+    else if (index > 2)
     {
         files_to_serve.reads.push(val);
     }
 });
 
-const SOCKET_ADDRESS = HOST + ":" + PORT.toString();
 
 function handle_get(request: http.ServerRequest, response: http.ServerResponse): void
 {
@@ -172,7 +191,7 @@ server.listen(PORT, function(): void
     console.log("Server listening on: http://localhost:%s", PORT);
 });
 
-Machine.create_machine(function(exit_code: number, machine: Machine): void
+Machine.create_machine(GCE_PROJECT_ID, function(exit_code: number, machine: Machine): void
 {
     if (exit_code)
     {
