@@ -235,7 +235,7 @@ export class Machine
 
         var create_args: Array<string> = [];
         if (gce_project_id)
-            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-zone", "us-central1-b", "--google-machine-type", "n1-highcpu-16", "--google-preemptible", machine_name];
+            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-zone", "us-central1-b", "--google-machine-type", "n1-highcpu-16", "--google-disk-size", "40", "--google-preemptible", machine_name];
         else
             create_args = ["create", "--driver", "virtualbox", machine_name];
 

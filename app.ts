@@ -210,10 +210,10 @@ Machine.create_machine(GCE_PROJECT_ID, function(exit_code: number, machine: Mach
 
         for (var i = 0; i < files_to_serve.reads.length; ++i)
         {
-            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString() + "; rm -f ./aln.sam.gz");
+            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString());
         }
 
-        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join("; ")], function(run_exit_status: number)
+        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join(" && ")], function(run_exit_status: number)
         {
             console.log("Run container exit status: " + run_exit_status);
 
