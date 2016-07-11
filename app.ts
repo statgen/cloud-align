@@ -26,8 +26,9 @@ var files_to_serve =
 
 var opt =  Getopt.create(
     [
-        ["g", "gce-proj=GOOGLE_PROJECT_ID" , "Google cloud project."],
-        ["h", "sock-addr=SOCKET_ADDRESS"   , "Socket address (host:port)."]
+        ["g", "gce-proj=GOOGLE_PROJECT_ID"  , "Google cloud project."],
+        ["h", "sock-addr=SOCKET_ADDRESS"    , "Socket address (host:port) for file server."],
+        ["n", "nodes=NUM_NODES"             , "Max number of compute nodes to created."]
     ])
     .parse(process.argv); // parse command line);
 
@@ -54,6 +55,12 @@ opt.argv.forEach(function (val: string, index: number, array: Array<string>)
         files_to_serve.reads.push(val);
     }
 });
+
+var NUM_COMPUTE_NODES: number = parseInt(opt.options["nodes"] || "1");
+if (NUM_COMPUTE_NODES < 1)
+    NUM_COMPUTE_NODES = 1;
+if (NUM_COMPUTE_NODES > files_to_serve.reads.length)
+    NUM_COMPUTE_NODES = files_to_serve.reads.length;
 
 
 function handle_get(request: http.ServerRequest, response: http.ServerResponse): void
@@ -191,40 +198,52 @@ server.listen(PORT, function(): void
     console.log("Server listening on: http://localhost:%s", PORT);
 });
 
-Machine.create_machine(GCE_PROJECT_ID, function(exit_code: number, machine: Machine): void
+
+var finish_counter: number = 0;
+for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
 {
-    if (exit_code)
+
+    (function (node_index: number)
     {
-        process.exit(exit_code);
-    }
-    else
-    {
-        var commands: Array<string> =
-            [
-                "curl http://" + SOCKET_ADDRESS + "/ref.amb > ./ref.amb",
-                "curl http://" + SOCKET_ADDRESS + "/ref.ann > ./ref.ann",
-                "curl http://" + SOCKET_ADDRESS + "/ref.bwt > ./ref.bwt",
-                "curl http://" + SOCKET_ADDRESS + "/ref.pac > ./ref.pac",
-                "curl http://" + SOCKET_ADDRESS + "/ref.sa > ./ref.sa"
-            ];
-
-        for (var i = 0; i < files_to_serve.reads.length; ++i)
+        Machine.create_machine(GCE_PROJECT_ID, function (exit_code:number, machine:Machine):void
         {
-            commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS +  "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString());
-        }
-
-        machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join(" && ")], function(run_exit_status: number)
-        {
-            console.log("Run container exit status: " + run_exit_status);
-
-            Machine.destroy_machine(machine, function (destroy_exit_status:number)
+            if (exit_code)
             {
-                console.log("Destroy machine exit status: " + destroy_exit_status);
-                process.exit(run_exit_status || destroy_exit_status);
-            });
+                process.exit(exit_code);
+            }
+            else
+            {
+                var commands:Array<string> =
+                    [
+                        "curl http://" + SOCKET_ADDRESS + "/ref.amb > ./ref.amb",
+                        "curl http://" + SOCKET_ADDRESS + "/ref.ann > ./ref.ann",
+                        "curl http://" + SOCKET_ADDRESS + "/ref.bwt > ./ref.bwt",
+                        "curl http://" + SOCKET_ADDRESS + "/ref.pac > ./ref.pac",
+                        "curl http://" + SOCKET_ADDRESS + "/ref.sa > ./ref.sa"
+                    ];
+
+                for (var i = 0; i < files_to_serve.reads.length; ++i)
+                {
+                    if (i % NUM_COMPUTE_NODES === node_index)
+                        commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS + "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString());
+                }
+
+                machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status:number)
+                {
+                    console.log("Run container exit status: " + run_exit_status);
+
+                    Machine.destroy_machine(machine, function (destroy_exit_status:number)
+                    {
+                        console.log("Destroy machine exit status: " + destroy_exit_status);
+                        ++finish_counter;
+                        if (finish_counter === NUM_COMPUTE_NODES)
+                            process.exit(run_exit_status || destroy_exit_status);
+                    });
+                });
+            }
         });
-    }
-});
+    })(node_i);
+}
 
 
 
