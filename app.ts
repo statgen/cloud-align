@@ -12,10 +12,8 @@ import Getopt = require("node-getopt");
 
 // Local
 import * as util from "./util";
-import {Machine} from "./machine"
-import ParsedOption = require("node-getopt");
+import {Machine} from "./machine";
 
-var driver = ""
 
 var files_to_serve =
 {
@@ -30,7 +28,7 @@ var opt =  Getopt.create(
         ["h", "sock-addr=SOCKET_ADDRESS"    , "Socket address (host:port) for file server."],
         ["n", "nodes=NUM_NODES"             , "Max number of compute nodes to created."]
     ])
-    .parse(process.argv); // parse command line);
+    .parse(process.argv);
 
 const SOCKET_ADDRESS = opt.options["sock-addr"] || "localhost:8080";
 var sock_addr_arr = SOCKET_ADDRESS.split(":");
@@ -143,7 +141,7 @@ function handle_put(request: http.ServerRequest, response: http.ServerResponse):
         }
         else
         {
-            var bam_file_path = files_to_serve.reads[read_index].replace(/\.fastq\.gz$/, ".sam.gz");
+            var bam_file_path = files_to_serve.reads[read_index].replace(/\.fastq\.gz$/, ".cram");
             var tmp_bam_file_path = bam_file_path + util.random_string(16);
 
             var file_stream = fs.createWriteStream(tmp_bam_file_path);
@@ -199,13 +197,34 @@ server.listen(PORT, function(): void
 });
 
 
+var machine_names: Array<string> = [];
+
+process.on('uncaughtException', (err: Error) =>
+{
+    console.error("Caught exception:");
+    console.error(err);
+
+    var finish_counter: number = 0;
+    for (var i = 0; i < machine_names.length; ++i)
+    {
+        Machine.destroy_machine_by_name(machine_names[i], function(exit_status: number)
+        {
+            if (exit_status)
+                console.error("Failed to destroy machine");
+            ++finish_counter;
+            if (finish_counter == machine_names.length)
+                process.exit(-1);
+        });
+    }
+});
+
+
 var finish_counter: number = 0;
 for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
 {
-
     (function (node_index: number)
     {
-        Machine.create_machine(GCE_PROJECT_ID, function (exit_code:number, machine:Machine):void
+        Machine.create_machine(GCE_PROJECT_ID, function (exit_code: number, machine: Machine):void
         {
             if (exit_code)
             {
@@ -213,8 +232,12 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
             }
             else
             {
+                machine_names.push(machine.get_name());
+
                 var commands:Array<string> =
                     [
+                        "set -o pipefail",
+                        "curl http://" + SOCKET_ADDRESS + "/ref > ./ref",
                         "curl http://" + SOCKET_ADDRESS + "/ref.amb > ./ref.amb",
                         "curl http://" + SOCKET_ADDRESS + "/ref.ann > ./ref.ann",
                         "curl http://" + SOCKET_ADDRESS + "/ref.bwt > ./ref.bwt",
@@ -225,14 +248,14 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
                 for (var i = 0; i < files_to_serve.reads.length; ++i)
                 {
                     if (i % NUM_COMPUTE_NODES === node_index)
-                        commands.push("bwa mem -t " + machine.get_num_cores().toString() + " ./ref http://" + SOCKET_ADDRESS + "/" + i.toString() + " | gzip -3 > ./aln.sam.gz && curl -T ./aln.sam.gz http://" + SOCKET_ADDRESS + "/" + i.toString());
+                        commands.push("(curl http://" + SOCKET_ADDRESS + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram http://" + SOCKET_ADDRESS + "/" + i.toString());
                 }
 
-                machine.run_container("statgen/alignment", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status:number)
+                machine.run_container("statgen/cloud-align", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status: number)
                 {
                     console.log("Run container exit status: " + run_exit_status);
 
-                    Machine.destroy_machine(machine, function (destroy_exit_status:number)
+                    Machine.destroy_machine(machine, function (destroy_exit_status: number)
                     {
                         console.log("Destroy machine exit status: " + destroy_exit_status);
                         ++finish_counter;

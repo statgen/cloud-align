@@ -207,7 +207,7 @@ export class Machine
         req.end();
     }
 
-    private static destroy_machine_by_name(name: string, cb: (exit_status: number)=>void): void
+    static destroy_machine_by_name(name: string, cb: (exit_status: number)=>void): void
     {
         var rm_proc: child_process.ChildProcess = child_process.spawn("docker-machine", ["rm", "-y", name]);
 
@@ -235,7 +235,7 @@ export class Machine
 
         var create_args: Array<string> = [];
         if (gce_project_id)
-            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-zone", "us-central1-b", "--google-machine-type", "n1-highcpu-16", "--google-disk-size", "40", "--google-preemptible", machine_name];
+            create_args = ["create", "--driver", "google", "--google-project", gce_project_id, "--google-zone", "us-central1-b", "--google-machine-type", "n1-highcpu-32", "--google-disk-size", "40", "--google-preemptible", machine_name];
         else
             create_args = ["create", "--driver", "virtualbox", machine_name];
 
