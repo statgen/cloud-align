@@ -60,6 +60,10 @@ if (NUM_COMPUTE_NODES < 1)
 if (NUM_COMPUTE_NODES > files_to_serve.reads.length)
     NUM_COMPUTE_NODES = files_to_serve.reads.length;
 
+var SERVER_CREDENTIALS = process.env["USER"] + ":" + util.random_string(16);
+var AUTHORIZATION_HEADER = "Basic " + new Buffer(SERVER_CREDENTIALS).toString("base64");
+var SERVER_AUTHORITY = SERVER_CREDENTIALS + "@" + SOCKET_ADDRESS;
+
 
 function handle_get(request: http.ServerRequest, response: http.ServerResponse): void
 {
@@ -173,22 +177,26 @@ function handle_put(request: http.ServerRequest, response: http.ServerResponse):
     }
 }
 
-
 function handle_request(request: http.ServerRequest, response: http.ServerResponse): void
 {
-    // TODO: basic auth
-
-    if (request.method == "GET")
-        handle_get(request, response);
-    else if (request.method == "PUT")
-        handle_put(request, response);
-    else
+    if (request.headers["authorization"] !== AUTHORIZATION_HEADER)
     {
-        response.writeHead(405); // Method Not Allowed
+        response.writeHead(401); // Unauthorized
         response.end();
     }
+    else
+    {
+        if (request.method == "GET")
+            handle_get(request, response);
+        else if (request.method == "PUT")
+            handle_put(request, response);
+        else
+        {
+            response.writeHead(405); // Method Not Allowed
+            response.end();
+        }
+    }
 }
-
 
 var server = http.createServer(handle_request);
 server.listen(PORT, function(): void
@@ -218,7 +226,6 @@ process.on('uncaughtException', (err: Error) =>
     }
 });
 
-
 var finish_counter: number = 0;
 for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
 {
@@ -237,18 +244,18 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
                 var commands:Array<string> =
                     [
                         "set -o pipefail",
-                        "curl http://" + SOCKET_ADDRESS + "/ref > ./ref",
-                        "curl http://" + SOCKET_ADDRESS + "/ref.amb > ./ref.amb",
-                        "curl http://" + SOCKET_ADDRESS + "/ref.ann > ./ref.ann",
-                        "curl http://" + SOCKET_ADDRESS + "/ref.bwt > ./ref.bwt",
-                        "curl http://" + SOCKET_ADDRESS + "/ref.pac > ./ref.pac",
-                        "curl http://" + SOCKET_ADDRESS + "/ref.sa > ./ref.sa"
+                        "curl http://" + SERVER_AUTHORITY + "/ref > ./ref",
+                        "curl http://" + SERVER_AUTHORITY + "/ref.amb > ./ref.amb",
+                        "curl http://" + SERVER_AUTHORITY + "/ref.ann > ./ref.ann",
+                        "curl http://" + SERVER_AUTHORITY + "/ref.bwt > ./ref.bwt",
+                        "curl http://" + SERVER_AUTHORITY + "/ref.pac > ./ref.pac",
+                        "curl http://" + SERVER_AUTHORITY + "/ref.sa > ./ref.sa"
                     ];
 
                 for (var i = 0; i < files_to_serve.reads.length; ++i)
                 {
                     if (i % NUM_COMPUTE_NODES === node_index)
-                        commands.push("(curl http://" + SOCKET_ADDRESS + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram http://" + SOCKET_ADDRESS + "/" + i.toString());
+                        commands.push("(curl http://" + SERVER_AUTHORITY + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram http://" + SERVER_AUTHORITY + "/" + i.toString());
                 }
 
                 machine.run_container("statgen/cloud-align", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status: number)
