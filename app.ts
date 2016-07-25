@@ -25,6 +25,7 @@ var files_to_serve =
 var opt =  Getopt.create(
     [
         ["g", "gce-proj=GOOGLE_PROJECT_ID"  , "Google cloud project."],
+        ["p", "pfx=PFX_FILE_PATH"           , "Path to PFX file."],
         ["h", "sock-addr=SOCKET_ADDRESS"    , "Socket address (host:port) for file server."],
         ["n", "nodes=NUM_NODES"             , "Max number of compute nodes to created."]
     ])
@@ -35,6 +36,7 @@ var sock_addr_arr = SOCKET_ADDRESS.split(":");
 const HOST: string = sock_addr_arr[0];
 const PORT = (sock_addr_arr.length > 1 ? parseInt(sock_addr_arr[1]) : 8080);
 const GCE_PROJECT_ID: string =  opt.options["gce-proj"] || "";
+const PFX_FILE_PATH: string = opt.options["pfx"] || "ssl/cloud-align.pfx";
 
 if (opt.argv.length < 4)
 {
@@ -198,7 +200,12 @@ function handle_request(request: http.ServerRequest, response: http.ServerRespon
     }
 }
 
-var server = http.createServer(handle_request);
+const tls_options: https.ServerOptions =
+{
+    pfx: fs.readFileSync(PFX_FILE_PATH)
+};
+
+var server = https.createServer(tls_options, handle_request);
 server.listen(PORT, function(): void
 {
     console.log("Server listening on: http://localhost:%s", PORT);
