@@ -257,6 +257,8 @@ export class Machine
             {
                 Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
                 {
+                    if (exit_status)
+                        console.error("Destroying machine FAILED: " + exit_status);
                     cb(exit_code, null);
                 });
             }
@@ -275,6 +277,8 @@ export class Machine
                     {
                         Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
                         {
+                            if (exit_status)
+                                console.error("Destroying machine FAILED: " + exit_status);
                             cb(exit_code, null);
                         });
                     }
@@ -288,6 +292,8 @@ export class Machine
                             console.error("Could not parse docker machine environment");
                             Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
                             {
+                                if (exit_status)
+                                    console.error("Destroying machine FAILED: " + exit_status);
                                 cb(-1, null);
                             });
 
