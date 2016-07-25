@@ -255,8 +255,10 @@ export class Machine
         {
             if (exit_code)
             {
-                Machine.destroy_machine_by_name(machine_name, function(exit_status: number) {});
-                cb(exit_code, null);
+                Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
+                {
+                    cb(exit_code, null);
+                });
             }
             else
             {
@@ -271,8 +273,10 @@ export class Machine
                 {
                     if (exit_code)
                     {
-                        Machine.destroy_machine_by_name(machine_name, function(exit_status: number) {});
-                        cb(exit_code, null);
+                        Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
+                        {
+                            cb(exit_code, null);
+                        });
                     }
                     else
                     {
@@ -282,8 +286,10 @@ export class Machine
                         if (!host_res || host_res.length != 2 || !cert_path_res || cert_path_res.length != 2)
                         {
                             console.error("Could not parse docker machine environment");
-                            Machine.destroy_machine_by_name(machine_name, function(exit_status: number) {});
-                            cb(-1, null);
+                            Machine.destroy_machine_by_name(machine_name, function(exit_status: number)
+                            {
+                                cb(-1, null);
+                            });
 
                         }
                         else

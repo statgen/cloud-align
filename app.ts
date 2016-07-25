@@ -242,7 +242,9 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
         {
             if (exit_code)
             {
-                process.exit(exit_code);
+                ++finish_counter;
+                if (finish_counter === NUM_COMPUTE_NODES)
+                    process.exit(exit_code);
             }
             else
             {
