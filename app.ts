@@ -208,7 +208,7 @@ const tls_options: https.ServerOptions =
 var server = https.createServer(tls_options, handle_request);
 server.listen(PORT, function(): void
 {
-    console.log("Server listening on: http://localhost:%s", PORT);
+    console.log("Server listening on: https://localhost:%s", PORT);
 });
 
 
@@ -253,18 +253,18 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
                 var commands:Array<string> =
                     [
                         "set -o pipefail",
-                        "curl http://" + SERVER_AUTHORITY + "/ref > ./ref",
-                        "curl http://" + SERVER_AUTHORITY + "/ref.amb > ./ref.amb",
-                        "curl http://" + SERVER_AUTHORITY + "/ref.ann > ./ref.ann",
-                        "curl http://" + SERVER_AUTHORITY + "/ref.bwt > ./ref.bwt",
-                        "curl http://" + SERVER_AUTHORITY + "/ref.pac > ./ref.pac",
-                        "curl http://" + SERVER_AUTHORITY + "/ref.sa > ./ref.sa"
+                        "curl https://" + SERVER_AUTHORITY + "/ref > ./ref",
+                        "curl https://" + SERVER_AUTHORITY + "/ref.amb > ./ref.amb",
+                        "curl https://" + SERVER_AUTHORITY + "/ref.ann > ./ref.ann",
+                        "curl https://" + SERVER_AUTHORITY + "/ref.bwt > ./ref.bwt",
+                        "curl https://" + SERVER_AUTHORITY + "/ref.pac > ./ref.pac",
+                        "curl https://" + SERVER_AUTHORITY + "/ref.sa > ./ref.sa"
                     ];
 
                 for (var i = 0; i < files_to_serve.reads.length; ++i)
                 {
                     if (i % NUM_COMPUTE_NODES === node_index)
-                        commands.push("(curl http://" + SERVER_AUTHORITY + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram http://" + SERVER_AUTHORITY + "/" + i.toString());
+                        commands.push("(curl https://" + SERVER_AUTHORITY + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram https://" + SERVER_AUTHORITY + "/" + i.toString());
                 }
 
                 machine.run_container("statgen/cloud-align", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status: number)
