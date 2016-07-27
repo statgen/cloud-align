@@ -300,7 +300,7 @@ export class Machine
                         }
                         else
                         {
-                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1], gce_project_id.length ? 16 : 2));
+                            cb(0, new Machine(machine_name, host_res[1], cert_path_res[1], gce_project_id.length ? 32 : 2));
                         }
                     }
                 });
