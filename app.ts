@@ -264,7 +264,7 @@ for (var node_i: number = 0; node_i < NUM_COMPUTE_NODES; ++node_i)
                 for (var i = 0; i < files_to_serve.reads.length; ++i)
                 {
                     if (i % NUM_COMPUTE_NODES === node_index)
-                        commands.push("(curl https://" + SERVER_AUTHORITY + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram https://" + SERVER_AUTHORITY + "/" + i.toString());
+                        commands.push("(curl https://" + SERVER_AUTHORITY + "/" + i.toString() + " > ./bwa-input.fastq && bwa mem -t " + machine.get_num_cores().toString() + " ./ref ./bwa-input.fastq | samtools sort -@ " + machine.get_num_cores().toString() + " -O bam -l 0 -T ./tmp - | samtools view -T ./ref -C -o ./aln.cram - ) && curl -T ./aln.cram https://" + SERVER_AUTHORITY + "/" + i.toString());
                 }
 
                 machine.run_container("statgen/cloud-align", ["/bin/bash", "-c", commands.join(" && ")], function (run_exit_status: number)
