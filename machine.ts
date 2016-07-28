@@ -67,6 +67,7 @@ export class Machine
                     var req_entity =
                     {
                         Image: image,
+                        NetworkMode: "host",
                         Cmd: cmd
                     };
 
